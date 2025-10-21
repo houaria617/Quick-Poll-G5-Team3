@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Quick-Poll — Demo</title>
+    <style>
+        :root {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #111
+        }
+
+        body {
+            background: #f7f8fb
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 12px
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.25rem
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 14px 0;
+            box-shadow: 0 6px 18px rgba(20, 20, 40, 0.06)
+        }
+
+        label {
+            display: block;
+            margin: 8px 0 4px;
+            font-weight: 600
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ddd
+        }
+
+        .options {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px
+        }
+
+        .row {
+            display: flex;
+            gap: 8px
+        }
+
+        button {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 0;
+            background: #4f46e5;
+            color: #fff
+        }
+
+        button.ghost {
+            background: transparent;
+            color: #4f46e5;
+            border: 1px solid #e6e6ff
+        }
+
+        .small {
+            padding: 6px 8px;
+            font-size: 0.9rem
+        }
+
+        .poll-area {
+            display: none
+        }
+
+        .option-btn {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            background: #fcfcff
+        }
+
+        .bar-wrap {
+            height: 18px;
+            background: #eef2ff;
+            border-radius: 999px;
+            overflow: hidden;
+            margin-top: 6px
+        }
+
+        .bar {
+            height: 100%;
+            width: 0%;
+            background: #6366f1
+        }
+
+        .meta {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 6px
+        }
+
+        .muted {
+            color: #888;
+            font-size: 0.9rem
+        }
+
+        .copy-success {
+            color: green;
+            font-weight: 600;
+            margin-left: 8px
+        }
+
+        @media(min-width:720px) {
+            header {
+                justify-content: space-between
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div>
+            <h1>Quick-Poll — Demo</h1>
+            <div class="muted">Create a poll, copy the link, share it, and watch results update locally.</div>
+        </div>
+        <div class="muted">Client-only prototype</div>
+    </header>
+
+    <section class="card" id="creator">
+        <label for="question">Poll question</label>
+        <input id="question" type="text" placeholder="e.g. Where should we order lunch?" />
+
+        <label style="margin-top:10px">Options</label>
+        <div class="options" id="optionsList">
+            <div class="row">
+                <input class="opt" type="text" placeholder="Option 1" />
+                <input class="opt" type="text" placeholder="Option 2" />
+                <button id="addOption" class="small ghost">+ Add</button>
+            </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+            <button id="create" class="">Create Poll</button>
+            <button id="reset" class="ghost small">Reset</button>
+            <span id="createdArea" style="margin-left:10px"></span>
+        </div>
+        <div id="creatorNote" class="meta">
+            This demo encodes the poll into the URL (no server). The link contains the poll data.
+        </div>
+    </section>
+
+    <section class="card poll-area" id="pollCard">
+        <h2 id="pollQuestion"></h2>
+        <div id="choices"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+            <button id="voteBtn" class="">Vote</button>
+            <button id="copyLink" class="ghost small">Copy link</button>
+            <button id="closePoll" class="ghost small">Close Poll</button>
+            <span id="copySuccess" class="copy-success" style="display:none">Copied!</span>
+        </div>
+        <div id="results" style="margin-top:14px"></div>
+        <div id="pollMeta" class="meta"></div>
+    </section>
+
+    <script>
+        /* ===== Utilities: encode/decode poll in URL ===== */
+        function encodePoll(pollObj) {
+            const json = JSON.stringify(pollObj);
+            // base64 with URL safe encoding
+            return encodeURIComponent(btoa(unescape(encodeURIComponent(json))));
+        }
+        function decodePoll(encoded) {
+            try {
+                const json = decodeURIComponent(escape(atob(decodeURIComponent(encoded))));
+                return JSON.parse(json);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        /* ===== Creator UI logic ===== */
+        const optionsList = document.getElementById('optionsList');
+        const addOptionBtn = document.getElementById('addOption');
+        addOptionBtn.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.className = 'opt';
+            input.type = 'text';
+            input.placeholder = 'Option';
+            optionsList.appendChild(input);
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+
+        document.getElementById('create').addEventListener('click', () => {
+            const q = document.getElementById('question').value.trim();
+            const optEls = Array.from(document.querySelectorAll('.opt'));
+            const opts = optEls.map(i => i.value.trim()).filter(s => s);
+            if (!q) { alert('Please enter a question.'); return; }
+            if (opts.length < 2) { alert('Please provide at least two options.'); return; }
+            // create poll object
+            const poll = {
+                id: 'poll_' + Date.now(),
+                question: q,
+                options: opts.map(o => ({ label: o, votes: 0 })),
+                createdAt: new Date().toISOString(),
+                closed: false
+            };
+            const enc = encodePoll(poll);
+            const url = location.origin + location.pathname + '?p=' + enc;
+            const area = document.getElementById('createdArea');
+            area.innerHTML = `Link: <a href="${url}" target="_blank">${url}</a>`;
+            area.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // show poll immediately using current URL (replaceState)
+            history.replaceState({}, '', '?p=' + enc);
+            renderPoll();
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            document.getElementById('question').value = '';
+            document.querySelectorAll('.opt').forEach((el, i) => {
+                if (i > 1) el.remove(); else el.value = '';
+            });
+            document.getElementById('createdArea').innerHTML = '';
+            history.replaceState({}, '', location.pathname);
+            hidePoll();
+        });
+
+        /* ===== Poll rendering & voting (client-only) ===== */
+        const pollCard = document.getElementById('pollCard');
+        const pollQuestionEl = document.getElementById('pollQuestion');
+        const choicesEl = document.getElementById('choices');
+        const resultsEl = document.getElementById('results');
+        const pollMeta = document.getElementById('pollMeta');
+        let currentPoll = null;
+        let selectedOption = null;
+
+        function hidePoll() {
+            pollCard.style.display = 'none';
+            currentPoll = null;
+        }
+
+        function renderPoll() {
+            const params = new URLSearchParams(location.search);
+            const p = params.get('p');
+            if (!p) { hidePoll(); return; }
+            const poll = decodePoll(p);
+            if (!poll) { hidePoll(); return; }
+            // if we have stored votes in localStorage, merge them:
+            const stored = loadStoredPoll(poll.id) || null;
+            if (stored && stored.options && stored.options.length === poll.options.length) {
+                poll.options = stored.options;
+                poll.closed = stored.closed ?? poll.closed;
+            }
+            currentPoll = poll;
+            pollCard.style.display = 'block';
+            pollQuestionEl.textContent = poll.question;
+            choicesEl.innerHTML = '';
+            poll.options.forEach((opt, idx) => {
+                const wrapper = document.createElement('div');
+                wrapper.style.marginTop = '8px';
+                const btn = document.createElement('button');
+                btn.className = 'option-btn';
+                btn.type = 'button';
+                btn.dataset.idx = idx;
+                btn.innerHTML = `<strong>${opt.label}</strong>`;
+                btn.addEventListener('click', () => {
+                    // pick an option
+                    document.querySelectorAll('.option-btn').forEach(b => b.style.outline = 'none');
+                    btn.style.outline = '3px solid rgba(99,102,241,0.15)';
+                    selectedOption = idx;
+                });
+                wrapper.appendChild(btn);
+                choicesEl.appendChild(wrapper);
+            });
+            updateResults();
+            // meta info
+            pollMeta.textContent = `Created: ${new Date(poll.createdAt).toLocaleString()} • ${poll.options.length} options`;
+        }
+
+        function updateResults() {
+            if (!currentPoll) return;
+            // votes totals
+            const total = currentPoll.options.reduce((s, o) => s + (o.votes || 0), 0);
+            resultsEl.innerHTML = '';
+            currentPoll.options.forEach((opt, idx) => {
+                const block = document.createElement('div');
+                block.style.marginTop = '10px';
+                block.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>${opt.label}</div>
+        <div class="muted">${opt.votes || 0} vote${(opt.votes || 0) !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="bar-wrap"><div class="bar" style="width:${total ? Math.round((opt.votes / total) * 100) : 0}%"></div></div>
+    `;
+                resultsEl.appendChild(block);
+            });
+        }
+
+        /* ===== Voting & local persistence ===== */
+        function loadStoredPoll(pollId) {
+            try {
+                return JSON.parse(localStorage.getItem('quickpoll_store_' + pollId));
+            } catch (e) { return null; }
+        }
+        function saveStoredPoll(poll) {
+            localStorage.setItem('quickpoll_store_' + poll.id, JSON.stringify(poll));
+        }
+
+        document.getElementById('voteBtn').addEventListener('click', () => {
+            if (!currentPoll) return;
+            if (currentPoll.closed) { alert('This poll is closed.'); return; }
+            if (selectedOption === null) { alert('Please choose an option first.'); return; }
+            const votedKey = 'quickpoll_voted_' + currentPoll.id;
+            if (localStorage.getItem(votedKey)) {
+                alert('You have already voted in this poll (client-side prevention).');
+                return;
+            }
+            // register vote
+            currentPoll.options[selectedOption].votes = (currentPoll.options[selectedOption].votes || 0) + 1;
+            // persist current poll state locally
+            saveStoredPoll(currentPoll);
+            // mark voted
+            localStorage.setItem(votedKey, JSON.stringify({ at: new Date().toISOString(), choice: selectedOption }));
+            updateResults();
+            alert('Thanks — your vote is recorded (locally).');
+        });
+
+        document.getElementById('copyLink').addEventListener('click', async () => {
+            const url = location.href;
+            try {
+                await navigator.clipboard.writeText(url);
+                const el = document.getElementById('copySuccess');
+                el.style.display = 'inline';
+                setTimeout(() => el.style.display = 'none', 1600);
+            } catch (e) {
+                alert('Copy failed. You can copy the link from your address bar.');
+            }
+        });
+
+        document.getElementById('closePoll').addEventListener('click', () => {
+            if (!currentPoll) return;
+            if (!confirm('Close this poll? Votes will no longer be accepted.')) return;
+            currentPoll.closed = true;
+            saveStoredPoll(currentPoll);
+            updateResults();
+            alert('Poll closed (local).');
+        });
+
+        /* ===== Init: render if URL contains poll ===== */
+        renderPoll();
+
+        /* If user manually edits URL or opens created link, re-render on popstate */
+        window.addEventListener('popstate', renderPoll);
+    </script>
+</body>
+
+</html>
