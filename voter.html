@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Quick-Poll — Vote</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      background: #f7f8fb;
+      padding: 30px;
+      max-width: 600px;
+      margin: auto;
+      color: #111;
+    }
+
+    h1 {
+      text-align: center;
+      color: #4f46e5;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 6px 18px rgba(20, 20, 40, 0.06);
+    }
+
+    .option {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #f9f9ff;
+      cursor: pointer;
+      text-align: left;
+      transition: 0.2s;
+    }
+
+    .option:hover {
+      background: #eef2ff;
+    }
+
+    .selected {
+      border-color: #4f46e5;
+      background: #eef2ff;
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #4338ca;
+    }
+
+    .bar-wrap {
+      height: 18px;
+      background: #eef2ff;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+
+    .bar {
+      height: 100%;
+      width: 0%;
+      background: #6366f1;
+    }
+
+    .result {
+      margin-top: 12px;
+    }
+
+    .meta {
+      text-align: center;
+      color: #666;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Quick Poll</h1>
+
+  <div class="card">
+    <h2 id="pollQuestion"></h2>
+    <div id="choices"></div>
+    <button id="voteBtn">Vote</button>
+
+    <div id="results" class="result"></div>
+    <div class="meta" id="pollMeta"></div>
+  </div>
+
+  <script>
+    /* ===== Utilities: decode poll from URL ===== */
+    function decodePoll(encoded) {
+      try {
+        const json = decodeURIComponent(escape(atob(decodeURIComponent(encoded))));
+        return JSON.parse(json);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    /* ===== Page elements ===== */
+    const questionEl = document.getElementById("pollQuestion");
+    const choicesEl = document.getElementById("choices");
+    const resultsEl = document.getElementById("results");
+    const metaEl = document.getElementById("pollMeta");
+    const voteBtn = document.getElementById("voteBtn");
+
+    let currentPoll = null;
+    let selectedOption = null;
+
+    /* ===== Load poll from URL ===== */
+    const params = new URLSearchParams(location.search);
+    const encoded = params.get("p");
+    if (!encoded) {
+      questionEl.textContent = "❌ Invalid or missing poll data.";
+      voteBtn.style.display = "none";
+    } else {
+      const poll = decodePoll(encoded);
+      if (!poll) {
+        questionEl.textContent = "❌ Poll could not be loaded.";
+        voteBtn.style.display = "none";
+      } else {
+        currentPoll = poll;
+        renderPoll();
+      }
+    }
+
+    function renderPoll() {
+      questionEl.textContent = currentPoll.question;
+      choicesEl.innerHTML = "";
+      resultsEl.innerHTML = "";
+      selectedOption = null;
+
+      currentPoll.options.forEach((opt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "option";
+        btn.textContent = opt.label;
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
+          btn.classList.add("selected");
+          selectedOption = idx;
+        });
+        choicesEl.appendChild(btn);
+      });
+
+      updateResults();
+      metaEl.textContent = `Created: ${new Date(currentPoll.createdAt).toLocaleString()}`;
+    }
+
+    function updateResults() {
+      const total = currentPoll.options.reduce((sum, o) => sum + (o.votes || 0), 0);
+      resultsEl.innerHTML = "";
+      currentPoll.options.forEach(opt => {
+        const block = document.createElement("div");
+        const percent = total ? Math.round((opt.votes / total) * 100) : 0;
+        block.innerHTML = `
+          <div style="display:flex;justify-content:space-between;">
+            <span>${opt.label}</span>
+            <span>${opt.votes} vote${opt.votes !== 1 ? "s" : ""} (${percent}%)</span>
+          </div>
+          <div class="bar-wrap"><div class="bar" style="width:${percent}%"></div></div>
+        `;
+        resultsEl.appendChild(block);
+      });
+    }
+
+    voteBtn.addEventListener("click", () => {
+      if (selectedOption === null) {
+        alert("Please select an option first!");
+        return;
+      }
+
+      const votedKey = "quickpoll_voted_" + currentPoll.id;
+      if (localStorage.getItem(votedKey)) {
+        alert("You have already voted in this poll.");
+        return;
+      }
+
+      currentPoll.options[selectedOption].votes++;
+      localStorage.setItem("quickpoll_store_" + currentPoll.id, JSON.stringify(currentPoll));
+      localStorage.setItem(votedKey, "true");
+
+      updateResults();
+      alert("✅ Your vote has been recorded locally!");
+    });
+  </script>
+</body>
+
+</html>
